@@ -31,4 +31,13 @@ class RollbarClient
       raise result['message']
     end
   end
+
+  def delete_all_occurrences_by_item_id(item_id)
+    count = 0
+    while occurrences = get_occurrences_by_item_id(item_id).presence
+      occurrences.each {|occ| delete_occurrence(occ['id']) }
+      count += occurrences.count
+    end
+    puts "#{count} occurrences have been deleted."
+  end
 end
