@@ -1,16 +1,17 @@
 # Rollbar scripts in Ruby
-Scripts for editing Rollbar in bulk
+
+Scripts for editing Rollbar items in bulk
 
 ## Usage
 
 ### List tasks
 
 ```
-rake
+rake -T
 ```
 
-### Delete all occurences of certain Rollbar items
+### Delete all occurrences of certain Rollbar items
 
 ```
-ROLLBAR_TOKEN=<CLEANUP_TOKEN> rake items <user_id>
+ROLLBAR_TOKEN=<CLEANUP_TOKEN> rake rollbar:delete_items <user_id>
 ```
