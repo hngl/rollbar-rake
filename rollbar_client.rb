@@ -1,43 +1,74 @@
+require 'faraday'
+
 class RollbarClient
   HOST = 'https://api.rollbar.com'
 
+  class << self
+    # Build new client with ENV['ROLLBAR_TOKEN']
+    def build
+      new(ENV['ROLLBAR_TOKEN'])
+    end
+  end
+
   def initialize(token)
     @token = token
+    @connection = Faraday.new(url: HOST) do |conn|
+      conn.request :url_encoded
+      conn.response :json
+      conn.response :raise_error
+      conn.use RollbarApiErrorMiddleware
+      conn.headers['X-Rollbar-Access-Token'] = token
+    end
   end
 
   def get_items(query)
-    uri = URI.parse(HOST + '/api/1/items')
-    params = { access_token: @token }.merge(query)
-    uri.query = URI.encode_www_form(params)
-    response = Net::HTTP.get(uri)
-    JSON.parse(response)['result']['items']
+    @connection.get('/api/1/items', query).body['result']['items']
   end
 
   def get_occurrences_by_item_id(item_id)
-    uri = URI.parse(HOST + "/api/1/item/#{item_id}/instances")
-    params = { access_token: @token }
-    uri.query = URI.encode_www_form(params)
-    response = Net::HTTP.get(uri)
-    JSON.parse(response)['result']['instances']
+    @connection.get("/api/1/item/#{item_id}/instances").body['result']['instances']
   end
 
   def delete_occurrence(occurrence_id)
-    uri = URI.parse(HOST + "/api/1/instance/#{occurrence_id}")
-    params = { access_token: @token }
-    uri.query = URI.encode_www_form(params)
-    puts "DELETE #{uri.path}?#{uri.query}"
-    result = JSON.parse(Net::HTTP.new(uri.host).delete("#{uri.path}?#{uri.query}").body)
-    return unless result['err'] == 1
+    result = @connection.delete("/api/1/instance/#{occurrence_id}").body
 
-    raise result['message']
+    result['message']
   end
 
   def delete_all_occurrences_by_item_id(item_id)
     count = 0
-    while occurrences = get_occurrences_by_item_id(item_id).presence
+    while (occurrences = get_occurrences_by_item_id(item_id)).any?
       occurrences.each { |occ| delete_occurrence(occ['id']) }
       count += occurrences.count
     end
-    puts "#{count} occurrences have been deleted."
+    count
   end
+
+  def get_item_id_by_counter(counter)
+    response = @connection.get("/api/1/item_by_counter/#{counter}").body
+    response['result']['itemId']
+  end
+
+  def get_item_details(item_id)
+    response = @connection.get("/api/1/item/#{item_id}").body
+    response['result']
+  end
+
+  class RollbarApiErrorMiddleware < Faraday::Middleware
+    def on_request(env)
+      # do something with the request
+      # env[:request_headers].merge!(...)
+    end
+
+    def on_complete(env)
+      response = env.response
+      body = response.body
+
+      return unless body.is_a?(Hash) && body['err'] == 1
+
+      raise RollbarApiError, body['message'] || 'Unknown Rollbar API error'
+    end
+  end
+
+  class RollbarApiError < StandardError; end
 end
